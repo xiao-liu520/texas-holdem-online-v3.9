@@ -41,8 +41,13 @@ class AudioManager{
     if(kind==='allin'){this.tone(130,.18,'sawtooth',.04,0,'action');this.tone(260,.22,'triangle',.035,.11,'result');this.chip();return}
     if(kind==='fold'){this.tone(150,.08,'square',.018,0,'action');return}
     if(kind==='showdown'){this.tone(392,.12,'triangle',.025,0,'result');this.tone(523,.18,'triangle',.032,.12,'result');return}
+    if(kind==='flop'){this.tone(330,.08,'triangle',.022,0,'card');this.tone(440,.12,'triangle',.028,.08,'card');return}
+    if(kind==='turn'){this.tone(440,.08,'triangle',.024,0,'card');this.tone(554,.14,'triangle',.03,.08,'card');return}
+    if(kind==='river'){this.tone(523,.08,'triangle',.026,0,'card');this.tone(659,.16,'triangle',.034,.08,'card');return}
     if(kind==='win'){this.tone(523,.12,'triangle',.035,0,'result');this.tone(659,.12,'triangle',.035,.12,'result');this.tone(784,.18,'triangle',.04,.24,'result');return}
     if(kind==='royal'){this.tone(523,.14,'triangle',.035,0,'result');this.tone(659,.14,'triangle',.035,.12,'result');this.tone(784,.18,'triangle',.04,.24,'result');this.tone(1046,.32,'sine',.035,.42,'result');return}
+    if(kind==='lose'){this.tone(330,.13,'sine',.025,0,'result');this.tone(247,.2,'sine',.022,.13,'result');return}
+    if(kind==='tie'){this.tone(440,.11,'triangle',.028,0,'result');this.tone(440,.16,'triangle',.028,.13,'result');return}
     if(kind==='countdown'){this.tone(880,.055,'square',.025,0,'ui');return}
     this.tone(420,.06,'sine',.018,0,'action');this.tone(620,.045,'triangle',.012,.055,'action');
   }
@@ -67,7 +72,7 @@ function flashSeat(p,kind){
 }
 function chipMove(p,amount,collect=false){
   const from=collect?potPoint():pointForPlayer(p),to=collect?pointForPlayer(p):potPoint();if(!from||!to)return;
-  const count=Math.min(6,Math.max(2,Math.ceil(Number(amount||0)/1500)));
+  const count=Math.min(window.matchMedia('(max-width: 800px)').matches?3:6,Math.max(2,Math.ceil(Number(amount||0)/1500)));
   for(let i=0;i<count;i++){
     const el=document.createElement('div');el.className='fx-chip-premium';el.style.left=(from[0]-10+Math.random()*12)+'px';el.style.top=(from[1]-10+Math.random()*12)+'px';document.body.appendChild(el);
     const dx=to[0]-from[0]+(Math.random()*18-9),dy=to[1]-from[1]+(Math.random()*18-9);
@@ -78,6 +83,12 @@ function showAction(p,status){
   const el=p?.id===window.latestState?.meId?document.querySelector('#myPlayerInfo'):document.querySelector('.s'+p?.seat);if(!el)return;
   const label=document.createElement('div');label.className='fx-action-label';label.textContent=status;el.appendChild(label);gsapTo(label,{y:-8,opacity:0,duration:.7*motionScale(),onComplete:()=>label.remove()});
 }
+function stageBanner(text,result=false){
+  const old=document.querySelector('.fx-stage-banner');if(old)old.remove();
+  const el=document.createElement('div');el.className='fx-stage-banner'+(result?' result':'');el.textContent=text;document.body.appendChild(el);
+  setTimeout(()=>el.remove(),result?1500:1050);
+}
+function stageName(count){return count===3?'翻牌 FLOP':count===4?'转牌 TURN':count===5?'河牌 RIVER':''}
 async function bootLibraries(){
   if(pixiBoot)return pixiBoot;
   if(window.matchMedia('(max-width: 800px)').matches){pixiBoot=Promise.resolve();return pixiBoot}
@@ -113,7 +124,10 @@ function ingest(s,old){
   window.latestState=s;bootLibraries();if(!old)return;
   const key=handKey(s);
   const oldCommunity=(old.community||[]).length,newCommunity=(s.community||[]).length;
-  if(newCommunity>oldCommunity){for(let i=0;i<newCommunity-oldCommunity;i++){audio.play('deal');setTimeout(()=>{document.querySelectorAll('#community .cardface')[oldCommunity+i]?.classList.add('fx-seat-flash')},i*70)}}
+  if(newCommunity>oldCommunity){
+    const stage=stageName(newCommunity);if(stage){stageBanner(stage);audio.play(newCommunity===3?'flop':newCommunity===4?'turn':'river')}
+    for(let i=0;i<newCommunity-oldCommunity;i++){audio.play('deal');setTimeout(()=>{document.querySelectorAll('#community .cardface')[oldCommunity+i]?.classList.add('fx-seat-flash')},i*70)}
+  }
   const oldMap=new Map((old.players||[]).map(p=>[p.id,p]));
   for(const p of (s.players||[])){
     const op=oldMap.get(p.id);if(!op)continue;
@@ -121,12 +135,17 @@ function ingest(s,old){
     if(p.status!==op.status){showAction(p,p.status);actionSound(p.status);flashSeat(p,p.status)}
   }
   if(s.phase==='showdown'&&old.phase!=='showdown'){audio.play('showdown');}
-  if(s.phase==='handEnd'&&old.phase!=='handEnd'){audio.play('win');for(const p of s.players||[])if((s.winnerIds||[]).includes(p.id)){flashSeat(p,'win');particleBurst('#f4d27c',14)}}
+  if(s.phase==='handEnd'&&old.phase!=='handEnd'){for(const p of s.players||[])if((s.winnerIds||[]).includes(p.id)){flashSeat(p,'win');particleBurst('#f4d27c',14)}}
   const names=[s.me?.handName,...(s.players||[]).map(p=>p.handName)];
   if(names.includes('皇家同花顺')&&!visualLedger.has(key+'|royal')){visualLedger.add(key+'|royal');royalFX()}
 }
 function showdown(d){
-  audio.play('showdown');for(const w of d?.winners||[]){const p=(window.latestState?.players||[]).find(x=>x.id===w.id);if(p){chipMove(p,w.amount,true);flashSeat(p,'win')}}
+  audio.play('showdown');
+  const winners=d?.winners||[],me=window.latestState?.meId;
+  const outcome=winners.some(w=>w.id===me)?(winners.length>1?'tie':'win'):'lose';
+  audio.play(outcome);
+  stageBanner(outcome==='win'?'YOU WIN':outcome==='tie'?'SPLIT POT':'SHOWDOWN',true);
+  for(const w of winners){const p=(window.latestState?.players||[]).find(x=>x.id===w.id);if(p){chipMove(p,w.amount,true);flashSeat(p,'win')}}
 }
 function unlock(){audio.unlock()}
 window.premiumFX={audio,unlock,play:(kind)=>audio.play(kind),ingest,showdown};
