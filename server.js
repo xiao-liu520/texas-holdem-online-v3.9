@@ -235,7 +235,7 @@ function toPublicState(r,socketId){
     toCall:me?Math.max(0,currentHighest(r)-me.roundBet):0,
     highestBet:currentHighest(r),minRaiseTo:r.minRaiseTo,canCheck:me?currentHighest(r)===me.roundBet:false,
     actionDeadline:r.actionDeadline||null,
-    winnerIds:r.winnerIds||[],
+    winnerIds:r.winnerIds||[],potBreakdown:publicPotBreakdown(r),
   };
 }
 function broadcastState(r){setPot(r);for(const p of r.players)if(p.socket)io.to(p.socket).emit('state',toPublicState(r,p.socket));schedulePersist()}
@@ -544,6 +544,16 @@ function makePots(r){
     prev=level;
   }
   return pots;
+}
+
+function publicPotBreakdown(r){
+  if(!r.pot || !['playing','showdown'].includes(r.phase))return [];
+  return makePots(r).map((pot,index)=>({
+    label:index===0?'主池':`边池 ${index}`,
+    amount:pot.amount,
+    eligibleIds:pot.eligible.map(p=>p.id),
+    contributorCount:pot.contributors.length
+  }));
 }
 
 function returnUnmatchedExcess(r){
