@@ -351,6 +351,7 @@ function putChips(r,p,amount){
 }
 function revealOwnCards(r,p){
   if(r.phase!=='showdown') throw new Error('当前不是摊牌/结果展示阶段');
+  if(!p.inHand||p.folded) throw new Error('已弃牌玩家不能展示底牌');
   if(!p.holeCards?.length) throw new Error('当前没有可展示的底牌');
   p._showdownVisible=true;
   broadcastState(r);
@@ -641,12 +642,14 @@ function beginNormalResult(r,results,winnerIds){
   if(!rooms.has(r.code)||r.phase!=='playing')return;
   clearActionTimer(r);
   r.phase='showdown';
-  r.revealAllShowdown=true;
+  // 其他玩家全部弃牌时属于“无人跟注获胜”，赢家可以选择亮牌，也可以盖牌。
+  // 这里不自动公开底牌；真正摊牌/All-in 仍由 beginShowdown 自动公开。
+  r.revealAllShowdown=false;
   r.currentPlayerId=null;
   r.pendingResults=results;
   r.pendingWinnings=new Map();
   r.winnerIds=[...winnerIds];
-  for(const p of r.players){if(p.inHand){p._showdownVisible=!p.folded;p.status=p.id===winnerIds[0]?'获胜':'弃牌';}}
+  for(const p of r.players){if(p.inHand){p._showdownVisible=false;p.status=p.id===winnerIds[0]?'获胜':'弃牌';}}
   broadcastState(r);
   notice(r,`牌局结束，保留当前牌面约 ${FOLD_RESULT_DELAY/1000} 秒后结算`);
   clearTimeout(r.resultTimer);
