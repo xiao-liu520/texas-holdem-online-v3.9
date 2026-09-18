@@ -41,11 +41,12 @@ input:focus{border-color:#63c99a}
 .player-item b{display:block}.player-item small{color:var(--muted)}
 #game{padding:10px;min-height:100vh;overflow-x:hidden}
 .game-top{display:flex;justify-content:space-between;align-items:center;gap:8px;max-width:1450px;margin:auto;padding:8px}
-.badge{background:#17231f;border:1px solid #30443d;border-radius:10px;padding:8px 10px;font-size:13px}
+.badge{background:#17231f;border:1px solid #30443d;border-radius:10px;padding:8px 10px;font-size:13px}.connection-badge{color:#9fe5bb}.connection-badge.offline{color:#ffb1a7;border-color:#8d453e}.connection-badge.connecting{color:#f2d58a;border-color:#806b38}
 .table-wrap{position:relative;max-width:1200px;height:min(70vh,720px);min-height:540px;margin:8px auto}
 .table{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(86%,980px);height:min(58%,430px);border-radius:48%/42%;background:radial-gradient(circle,#10a45e 0,#087a45 58%,#04542f 100%);border:18px solid #242a28;box-shadow:0 18px 35px #0009,inset 0 0 0 3px #52605b,inset 0 0 40px #012b18}
 .table-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px}
 .pot{font-size:20px;font-weight:800;text-shadow:0 2px 4px #0008}.pot-wrap{display:flex;flex-direction:column;align-items:center;gap:4px}.pot-chips{display:flex;justify-content:center;min-height:14px}.pot-chip{width:18px;height:18px;border-radius:50%;margin-left:-5px;border:2px dashed #fff9;box-shadow:0 2px 5px #0008;animation:potChipIn .28s ease-out both}.pot-chip:nth-child(4n+1){background:#d74b4b}.pot-chip:nth-child(4n+2){background:#4b7bd7}.pot-chip:nth-child(4n+3){background:#e2b84b}.pot-chip:nth-child(4n){background:#f0f0f0}@keyframes potChipIn{from{opacity:0;transform:translateY(-8px) scale(.5)}to{opacity:1;transform:none}}
+.pot-breakdown{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;max-width:260px;margin-top:2px}.pot-layer{padding:3px 7px;border:1px solid #d6aa5566;border-radius:999px;background:#14231cdd;color:#f6d98b;font-size:10px;font-weight:800;white-space:nowrap}.pot-layer small{color:#b8c6bf;font-weight:600}
 .community{display:flex;gap:7px;min-height:74px}
 .cardface{width:52px;height:72px;border-radius:7px;background:#fff;color:#161616;display:flex;align-items:center;justify-content:center;font-size:25px;font-weight:800;box-shadow:0 2px 7px #0007}
 .cardface.red{color:#c92727}
@@ -323,12 +324,13 @@ input:focus{border-color:#63c99a}
     <div class="badge">房间 <b id="gameRoom"></b></div>
     <div class="badge">盲注 <b id="blinds"></b></div>
     <div class="badge">下次升盲 <b id="blindTimer"></b></div>
+    <div id="connectionBadge" class="badge connection-badge">在线</div>
     <button class="btn" id="leaveGameBtn">离开</button>
   </div>
   <div class="table-wrap">
     <div class="table">
-      <div class="table-center">
-        <div class="pot-wrap"><div class="pot">底池 <span id="pot">0</span></div><div id="potChips" class="pot-chips" aria-hidden="true"></div></div>
+    <div class="table-center">
+        <div class="pot-wrap"><div class="pot">底池 <span id="pot">0</span></div><div id="potChips" class="pot-chips" aria-hidden="true"></div><div id="potBreakdown" class="pot-breakdown hidden" aria-live="polite"></div></div>
         <div id="streetHint" class="street-hint">翻牌前</div>
         <div id="community" class="community"></div>
       </div>
@@ -434,6 +436,7 @@ function detectVisualEvents(s){
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function fmt(n){return Number(n||0).toLocaleString('zh-CN')}
 function showToast(msg){$('toast').textContent=msg;$('toast').classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.add('hidden'),2200)}
+function setConnectionState(state){const el=$('connectionBadge');if(!el)return;const map={online:['在线',''],connecting:['连接中…','connecting'],offline:['网络中断','offline']};const item=map[state]||map.connecting;el.textContent=item[0];el.className='badge connection-badge '+item[1]}
 function screen(name){['home','lobby','game'].forEach(x=>$(x).classList.toggle('hidden',x!==name))}
 function saveIdentity(){localStorage.setItem('poker_nickname',$('nickname').value.trim())}
 function saveRoomIdentity(code,token){localStorage.setItem('poker_room_code',code);localStorage.setItem('poker_room_token',token)}
@@ -478,10 +481,10 @@ function tryResume(){
   resumeInFlight=true;
   socket.emit('resumeRoom',{roomCode:code,token});
 }
-socket.on('connect',()=>{ resumeInFlight=false; tryResume(); showToast('网络已连接，正在恢复座位…'); });
-socket.on('reconnect',()=>{ resumeInFlight=false; tryResume(); });
-socket.on('disconnect',()=>{ resumeInFlight=false; if(localStorage.getItem('poker_room_token')) showToast('网络暂时中断，正在自动重连…'); });
-socket.on('connect_error',()=>{ /* Socket.IO 会持续自动重连，不清除本地身份 */ });
+socket.on('connect',()=>{ setConnectionState('online');resumeInFlight=false; tryResume(); showToast('网络已连接，正在恢复座位…'); });
+socket.on('reconnect',()=>{ setConnectionState('online');resumeInFlight=false; tryResume(); });
+socket.on('disconnect',()=>{ setConnectionState('offline');resumeInFlight=false; if(localStorage.getItem('poker_room_token')) showToast('网络暂时中断，正在自动重连…'); });
+socket.on('connect_error',()=>{ setConnectionState('connecting'); /* Socket.IO 会持续自动重连，不清除本地身份 */ });
 // 手机切换 Wi-Fi/流量、进电梯、切后台或横竖屏时，不主动离开房间；恢复网络后自动接管原座位。
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'){
@@ -537,6 +540,14 @@ function cardHtml(c,back=false){
 function renderPotChips(amount){
   const el=$('potChips'); if(!el)return; const n=Math.min(10, Math.max(0, Math.ceil(Number(amount||0)/1000)));
   el.innerHTML=Array.from({length:n},(_,i)=>'<span class="pot-chip" style="animation-delay:'+(i*25)+'ms"></span>').join('');
+}
+function renderPotBreakdown(s){
+  const el=$('potBreakdown');if(!el)return;
+  const pots=(s.potBreakdown||[]);if(pots.length<2){el.classList.add('hidden');el.innerHTML='';return}
+  el.innerHTML=pots.map(p=>{
+    const names=(p.eligibleIds||[]).map(id=>(s.players||[]).find(x=>x.id===id)?.nickname).filter(Boolean);
+    return '<span class="pot-layer">'+esc(p.label)+' '+fmt(p.amount)+' <small>可赢：'+esc(names.join('、')||'无')+'</small></span>';
+  }).join('');el.classList.remove('hidden');
 }
 function actionLabel(status){
   const m={'跟注':'跟注','加注':'加注','过牌':'过牌','全押':'全押','弃牌':'弃牌','超时弃牌':'超时弃牌'}; return m[status]||'';
@@ -596,7 +607,7 @@ function playerSeatElement(p){
 }
 
 function renderGame(s){
-  $('gameRoom').textContent=s.roomCode;$('blinds').textContent=s.smallBlind+' / '+s.bigBlind;$('pot').textContent=fmt(s.pot);renderPotChips(s.pot);$('streetHint').textContent=s.phase==='showdown'?'摊牌展示 · 即将结算':({preflop:'翻牌前',flop:'翻牌',turn:'转牌',river:'河牌'}[s.street]||'');
+  $('gameRoom').textContent=s.roomCode;$('blinds').textContent=s.smallBlind+' / '+s.bigBlind;$('pot').textContent=fmt(s.pot);renderPotChips(s.pot);renderPotBreakdown(s);$('streetHint').textContent=s.phase==='showdown'?'摊牌展示 · 即将结算':({preflop:'翻牌前',flop:'翻牌',turn:'转牌',river:'河牌'}[s.street]||'');
   const prevCommunityCount=s.__oldCommunityCount||0;
   $('community').innerHTML=(s.community||[]).map((c,idx)=>cardHtml(c)+(idx>=prevCommunityCount?'':'')).join('');
   [...$('community').children].forEach((el,idx)=>{if(idx>=prevCommunityCount&&idx<(s.community||[]).length)el.classList.add('deal-anim')});
