@@ -7,5 +7,6 @@
 .fx-spark{position:fixed;width:6px;height:6px;border-radius:50%;z-index:46;pointer-events:none;background:#ffe8a0;box-shadow:0 0 12px #ffe8a0;}
 @keyframes fxRoyal{0%{opacity:0;transform:scale(.8)}25%{opacity:1}100%{opacity:0;transform:scale(1.18)}}
 @media(max-width:600px){.fx-chip-premium{width:16px;height:16px}.fx-action-label{font-size:9px;top:-22px;padding:3px 7px}}
+@media(max-width:800px){#fxLayer{display:none}}
 @media(prefers-reduced-motion:reduce){.fx-royal{animation:none;opacity:.45}.fx-chip-premium,.fx-spark{display:none}}
 
