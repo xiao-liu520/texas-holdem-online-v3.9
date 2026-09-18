@@ -568,7 +568,8 @@ function beginShowdown(r){
   r.showdownStarted=true;
   clearActionTimer(r);
   r.phase='showdown';
-  r.revealAllShowdown=alivePlayers(r).length>0 && alivePlayers(r).every(p=>p.allIn);
+  // 摊牌阶段自动展示所有未弃牌玩家的底牌；这只影响展示，不参与任何规则或结算判断。
+  r.revealAllShowdown=alivePlayers(r).length>0;
   for(const p of r.players){if(p.inHand&&!p.folded){p.status='摊牌';p._showdownVisible=!!r.revealAllShowdown;}}
   r.currentPlayerId=null;
   broadcastState(r);
@@ -640,12 +641,12 @@ function beginNormalResult(r,results,winnerIds){
   if(!rooms.has(r.code)||r.phase!=='playing')return;
   clearActionTimer(r);
   r.phase='showdown';
-  r.revealAllShowdown=false;
+  r.revealAllShowdown=true;
   r.currentPlayerId=null;
   r.pendingResults=results;
   r.pendingWinnings=new Map();
   r.winnerIds=[...winnerIds];
-  for(const p of r.players){if(p.inHand)p.status=p.id===winnerIds[0]?'获胜':'弃牌';}
+  for(const p of r.players){if(p.inHand){p._showdownVisible=!p.folded;p.status=p.id===winnerIds[0]?'获胜':'弃牌';}}
   broadcastState(r);
   notice(r,`牌局结束，保留当前牌面约 ${FOLD_RESULT_DELAY/1000} 秒后结算`);
   clearTimeout(r.resultTimer);
@@ -820,3 +821,4 @@ io.on('connection',socket=>{
 });
 app.get('/health',(req,res)=>res.json({ok:true,rooms:rooms.size}));
 initPersistence().then(()=>server.listen(PORT,()=>console.log(`Poker server listening on ${PORT}`))).catch(e=>{console.error('[REDIS] initialization failed:',e);server.listen(PORT,()=>console.log(`Poker server listening on ${PORT}`))});
+
