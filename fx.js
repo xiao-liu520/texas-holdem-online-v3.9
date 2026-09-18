@@ -80,6 +80,7 @@ function showAction(p,status){
 }
 async function bootLibraries(){
   if(pixiBoot)return pixiBoot;
+  if(window.matchMedia('(max-width: 800px)').matches){pixiBoot=Promise.resolve();return pixiBoot}
   pixiBoot=Promise.allSettled([import(GSAP_URL),import(PIXI_URL)]).then(async ([g,p])=>{
     gsap=g.status==='fulfilled'?(g.value.gsap||g.value.default||g.value):null;
     pixi=p.status==='fulfilled'?p.value:null;
