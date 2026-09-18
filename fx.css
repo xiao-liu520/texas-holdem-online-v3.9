@@ -1,0 +1,11 @@
+#fxLayer{position:fixed;inset:0;z-index:35;pointer-events:none;overflow:hidden;contain:layout paint;}
+#fxLayer canvas{display:block;width:100%;height:100%;pointer-events:none;}
+.fx-chip-premium{position:fixed;width:20px;height:20px;border-radius:50%;z-index:45;pointer-events:none;background:radial-gradient(circle,#ffe8a0 0 30%,#b27818 33% 58%,#fff1ad 61% 100%);border:2px solid #fff9;box-shadow:0 3px 12px #000b,0 0 10px #f2b23399;will-change:transform,opacity;}
+.fx-seat-flash{z-index:12;}
+.fx-action-label{position:absolute;left:50%;top:-26px;transform:translateX(-50%);z-index:20;padding:4px 9px;border:1px solid #f4d27c99;border-radius:999px;background:#171c19ee;color:#ffe39a;font-size:11px;font-weight:900;white-space:nowrap;pointer-events:none;}
+.fx-royal{position:fixed;inset:0;z-index:34;pointer-events:none;background:radial-gradient(circle at 50% 50%,#f9d87822 0,#2b9bff12 28%,transparent 64%);animation:fxRoyal .9s ease-out both;}
+.fx-spark{position:fixed;width:6px;height:6px;border-radius:50%;z-index:46;pointer-events:none;background:#ffe8a0;box-shadow:0 0 12px #ffe8a0;}
+@keyframes fxRoyal{0%{opacity:0;transform:scale(.8)}25%{opacity:1}100%{opacity:0;transform:scale(1.18)}}
+@media(max-width:600px){.fx-chip-premium{width:16px;height:16px}.fx-action-label{font-size:9px;top:-22px;padding:3px 7px}}
+@media(prefers-reduced-motion:reduce){.fx-royal{animation:none;opacity:.45}.fx-chip-premium,.fx-spark{display:none}}
+
