@@ -6,7 +6,8 @@ class AudioManager{
     this.ctx=null;this.master=null;this.buses=new Map();this.chipBuffer=null;this.chipLoading=null;
     this.muted=localStorage.getItem('poker_sound')==='off';
   }
-  unlock(){if(this.muted)return;try{this.ensure();if(this.ctx.state==='suspended')this.ctx.resume()}catch(e){}}
+  syncMute(){this.muted=localStorage.getItem('poker_sound')==='off';return this.muted}
+  unlock(){if(this.syncMute())return;try{this.ensure();if(this.ctx.state==='suspended')this.ctx.resume()}catch(e){}}
   ensure(){
     if(this.ctx)return;
     this.ctx=new (window.AudioContext||window.webkitAudioContext)();
@@ -33,7 +34,7 @@ class AudioManager{
     else this.tone(180,.06,'square',.025,0,'chip');
   }
   play(kind){
-    if(this.muted)return;
+    if(this.syncMute())return;
     if(kind==='deal'){this.tone(720,.055,'triangle',.024,0,'card');this.tone(960,.045,'triangle',.018,.045,'card');return}
     if(kind==='chip'||kind==='bet'){this.chip();return}
     if(kind==='raise'){this.tone(440,.07,'triangle',.028,0,'chip');this.tone(660,.08,'triangle',.022,.07,'chip');this.chip();return}
