@@ -631,10 +631,10 @@ function renderGame(s){
   syncRaiseAmount(s,false);
   const revealBtn=$('revealBtn');
   if(revealBtn){
-    const canReveal=s.phase==='showdown' && !!s.myCards?.length && !(s.me?.showdownVisible);
+    const canReveal=s.phase==='showdown' && !!s.myCards?.length && !s.meFolded && !(s.me?.showdownVisible);
     revealBtn.classList.toggle('hidden',!canReveal);
     revealBtn.disabled=!canReveal;
-    revealBtn.textContent=s.meFolded?'亮出已弃牌底牌':'亮出我的牌';
+    revealBtn.textContent='亮出我的牌';
   }
   updateBlindCountdown(s.nextBlindAt);
   updateActionCountdown(s.actionDeadline, s.currentPlayerId===s.meId && s.phase==='playing');
