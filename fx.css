@@ -8,5 +8,9 @@
 @keyframes fxRoyal{0%{opacity:0;transform:scale(.8)}25%{opacity:1}100%{opacity:0;transform:scale(1.18)}}
 @media(max-width:600px){.fx-chip-premium{width:16px;height:16px}.fx-action-label{font-size:9px;top:-22px;padding:3px 7px}}
 @media(max-width:800px){#fxLayer{display:none}}
+.fx-stage-banner{position:fixed;left:50%;top:18%;z-index:48;transform:translateX(-50%);padding:8px 18px;border:1px solid #f0cf79aa;border-radius:999px;background:linear-gradient(180deg,#25342eef,#101815ee);box-shadow:0 8px 24px #0008,0 0 18px #f0cf7944;color:#ffe8a0;font-size:clamp(13px,2vw,18px);font-weight:900;letter-spacing:.12em;pointer-events:none;white-space:nowrap;animation:fxStageBanner .95s cubic-bezier(.2,.8,.2,1) both}
+.fx-stage-banner.result{top:34%;font-size:clamp(16px,3vw,28px);border-color:#fff0b8cc;box-shadow:0 10px 32px #0009,0 0 30px #f0cf7966}
+@keyframes fxStageBanner{0%{opacity:0;transform:translate(-50%,-14px) scale(.82)}18%{opacity:1}70%{opacity:1;transform:translate(-50%,0) scale(1.03)}100%{opacity:0;transform:translate(-50%,10px) scale(1)}}
+@media(max-width:600px){.fx-stage-banner{top:16%;padding:6px 13px;font-size:12px}.fx-stage-banner.result{top:30%;font-size:17px}}
 @media(prefers-reduced-motion:reduce){.fx-royal{animation:none;opacity:.45}.fx-chip-premium,.fx-spark{display:none}}
 
