@@ -36,7 +36,7 @@ function serializeRoom(r){
   const cleanPlayer=p=>({
     token:p.token,nickname:p.nickname,seat:p.seat,chips:p.chips,ready:p.ready,isHost:p.isHost,
     offline:p.offline,status:p.status,inHand:p.inHand,folded:p.folded,allIn:p.allIn,holeCards:p.holeCards,
-    totalBet:p.totalBet,roundBet:p.roundBet,avatar:p.avatar,reconnectUntil:p.reconnectUntil||0
+    totalBet:p.totalBet,roundBet:p.roundBet,avatar:p.avatar,reconnectUntil:p.reconnectUntil||0,showdownVisible:!!p._showdownVisible
   });
   return {
     code:r.code,hostId:r.hostId,phase:r.phase,smallBlind:r.smallBlind,bigBlind:r.bigBlind,nextBlindAt:r.nextBlindAt,
@@ -73,7 +73,7 @@ function scheduleDeleteRoom(code){
 function restoreRoom(raw){
   if(!raw||!raw.code||!Array.isArray(raw.players))return null;
   const r={...raw,blindTimer:null,showdownTimer:null,resultTimer:null,actionTimer:null,acted:new Set(),pending:new Set(),pendingWinnings:raw.pendingWinnings?new Map(raw.pendingWinnings):null};
-  r.players=r.players.map(p=>({...p,id:null,socket:null,offline:true,status:'离线',reconnectUntil:Date.now()+RECONNECT_GRACE,_showdownVisible:false}));
+  r.players=r.players.map(p=>({...p,id:null,socket:null,offline:true,status:'离线',reconnectUntil:Date.now()+RECONNECT_GRACE,_showdownVisible:!!p.showdownVisible}));
   r._actedTokens=new Set(raw.actedTokens||[]);
   r._pendingTokens=new Set(raw.pendingTokens||[]);
   r._currentPlayerToken=raw.currentPlayerToken||null;
@@ -226,7 +226,7 @@ function setPot(r){r.pot=totalCommitted(r)}
 function toPublicState(r,socketId){
   const me=r.players.find(p=>p.id===socketId);
   const myCards=me?.holeCards || [];
-  r.players.forEach(p=>{p._sbSeat=r.sbSeat;p._bbSeat=r.bbSeat;if(r.phase==='handEnd') p._showdownVisible=!!(!p.folded && r.revealAllShowdown); else if(r.phase!=='showdown') p._showdownVisible=false;});
+  r.players.forEach(p=>{p._sbSeat=r.sbSeat;p._bbSeat=r.bbSeat;if(r.phase==='handEnd'&&r.revealAllShowdown)p._showdownVisible=!!(!p.folded);else if(r.phase!=='showdown'&&r.phase!=='handEnd')p._showdownVisible=false;});
   const players=r.players.map(p=>publicPlayer(p,socketId,r));
   return {
     roomCode:r.code,phase:r.phase,smallBlind:r.smallBlind,bigBlind:r.bigBlind,nextBlindAt:r.nextBlindAt,sbSeat:r.sbSeat,bbSeat:r.bbSeat,dealerSeat:r.dealerSeat,
@@ -353,12 +353,14 @@ function revealOwnCards(r,p){
   if(r.phase!=='showdown') throw new Error('当前不是摊牌/结果展示阶段');
   if(!p.inHand||p.folded) throw new Error('已弃牌玩家不能展示底牌');
   if(!p.holeCards?.length) throw new Error('当前没有可展示的底牌');
+  if(p._showdownVisible)return;
   p._showdownVisible=true;
   broadcastState(r);
-  notice(r,p.folded?`${p.nickname} 展示了已弃牌的底牌（仅供查看，不影响本局胜负）`:`${p.nickname} 亮出了自己的底牌`);
+  notice(r,`${p.nickname} 亮出了自己的底牌`);
 }
 
 function doAction(r,p,a){
+  if(!a || typeof a!=='object' || typeof a.type!=='string')throw new Error('无效的操作请求');
   validateActor(r,p);
   clearActionTimer(r);
   const highest=currentHighest(r);
