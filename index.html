@@ -76,7 +76,7 @@ input:focus{border-color:#63c99a}
 .actions{width:min(900px,100%);display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;background:#111816e8;border:1px solid #2f403a;padding:9px;border-radius:15px}
 .action-btn{min-width:100px;padding:12px 16px;border-radius:11px;color:#fff;font-weight:800}
 .action-btn.fold{background:#a92e2b}.action-btn.check{background:#2f5b4a}.action-btn.call{background:#167f51}.action-btn.raise{background:#b97908}.action-btn.allin{background:#7b3aa7}
-.raise-box{display:flex;gap:7px;align-items:center}.raise-box input{width:120px;padding:10px}
+.raise-box{display:flex;gap:7px;align-items:center}.raise-box input{width:120px;padding:10px;text-align:center}.raise-step{min-width:42px;padding:10px 12px;border-radius:10px;background:#46564f;color:#fff;font-weight:900}.raise-step:disabled{opacity:.45;cursor:not-allowed}.raise-step:not(:disabled):hover{filter:brightness(1.08)}
 .chat{position:fixed;right:14px;bottom:14px;width:280px;background:#121917ee;border:1px solid #34433e;border-radius:14px;overflow:hidden;z-index:20}
 .chat-head{padding:9px 12px;font-weight:800;background:#1b2522}
 .messages{height:150px;overflow:auto;padding:8px 10px;font-size:12px}.msg{margin:5px 0}.msg b{color:#f0c15a}
@@ -344,7 +344,7 @@ input:focus{border-color:#63c99a}
       <button class="action-btn fold" id="foldBtn">弃牌</button>
       <button class="action-btn check" id="checkBtn">过牌</button>
       <button class="action-btn call" id="callBtn">跟注</button>
-      <div class="raise-box"><input id="raiseAmount" type="number" min="1" step="1" placeholder="加注总额"><button class="action-btn raise" id="raiseBtn">加注</button></div>
+      <div class="raise-box"><button class="raise-step" id="raiseMinus" type="button" aria-label="减少加注额">−</button><input id="raiseAmount" type="text" inputmode="none" placeholder="加注总额" readonly><button class="raise-step" id="raisePlus" type="button" aria-label="增加加注额">＋</button><button class="action-btn raise" id="raiseBtn">加注</button></div>
       <button class="action-btn allin" id="allinBtn">全押</button>
     </div>
   </div>
@@ -447,6 +447,8 @@ $('checkBtn').onclick=()=>{initAudio();socket.emit('action',{type:'check'})};
 $('callBtn').onclick=()=>{initAudio();socket.emit('action',{type:'call'})};
 $('raiseBtn').onclick=()=>{initAudio();const amount=Number($('raiseAmount').value);if(!amount)return showToast('请输入加注后的总投入');socket.emit('action',{type:'raise',amount})};
 $('allinBtn').onclick=()=>{initAudio();socket.emit('action',{type:'allin'})};
+$('raiseMinus').onclick=()=>adjustRaiseAmount(-1);
+$('raisePlus').onclick=()=>adjustRaiseAmount(1);
 $('revealBtn').onclick=()=>{initAudio();socket.emit('revealCards')};
 $('chatBtn').onclick=sendChat;
 $('chatInput').onkeydown=e=>{if(e.key==='Enter')sendChat()};
@@ -530,6 +532,34 @@ function renderPotChips(amount){
 function actionLabel(status){
   const m={'跟注':'跟注','加注':'加注','过牌':'过牌','全押':'全押','弃牌':'弃牌','超时弃牌':'超时弃牌'}; return m[status]||'';
 }
+function legalRaiseBounds(s){
+  const highest=Number(s.highestBet||0), blind=Number(s.bigBlind||0), minRaise=Number(s.minRaiseTo||blind);
+  const minimum=Math.max(highest+minRaise,(s.toCall||0)+((highest>0?minRaise:blind)));
+  const mePlayer=(s.players||[]).find(p=>p.id===s.meId);
+  const maximum=Math.max(minimum,Number(mePlayer?.chips||0)+Number(mePlayer?.roundBet||0));
+  return {minimum,maximum,step:blind};
+}
+function syncRaiseAmount(s, preserve=true){
+  const input=$('raiseAmount'), minus=$('raiseMinus'), plus=$('raisePlus');
+  if(!input||!minus||!plus)return;
+  const b=legalRaiseBounds(s);
+  let value=preserve?Number(input.value):0;
+  if(!Number.isFinite(value)||value<=0)value=b.minimum;
+  value=Math.min(b.maximum,Math.max(b.minimum,value));
+  input.value=value;
+  input.min=b.minimum;input.max=b.maximum;input.step=b.step||1;
+  input.placeholder='至少加到 '+fmt(b.minimum);
+  const mine=s.currentPlayerId===s.meId && s.phase==='playing' && !s.meFolded;
+  minus.disabled=!mine||value<=b.minimum;
+  plus.disabled=!mine||value>=b.maximum;
+}
+function adjustRaiseAmount(direction){
+  if(!latestState)return;
+  const b=legalRaiseBounds(latestState),input=$('raiseAmount');
+  const current=Number(input.value)||b.minimum;
+  const next=Math.min(b.maximum,Math.max(b.minimum,current+direction*b.step));
+  input.value=next;syncRaiseAmount(latestState,true);initAudio();
+}
 function visualSeatSlot(p, s, opponents){
   // 以自己为底部中心，按服务器座位号顺时针寻找其他玩家，保证所有客户端视角一致。
   const me=s.players.find(x=>x.id===s.meId);
@@ -591,7 +621,7 @@ function renderGame(s){
   $('callBtn').disabled=!mine || s.toCall===0;
   $('callBtn').textContent=s.toCall>0?`跟注 ${fmt(s.toCall)}`:'跟注';
   $('raiseBtn').disabled=!mine;$('allinBtn').disabled=!mine;
-  if(mine){const minTarget=Math.max((s.highestBet||0)+(s.minRaiseTo||s.bigBlind||0), (s.toCall||0)+((s.highestBet||0)>0?(s.minRaiseTo||s.bigBlind||0):s.bigBlind||0));$('raiseAmount').min=minTarget;$('raiseAmount').placeholder='至少加到 '+fmt(minTarget)}
+  syncRaiseAmount(s,false);
   const revealBtn=$('revealBtn');
   if(revealBtn){
     const canReveal=s.phase==='showdown' && !!s.myCards?.length && !(s.me?.showdownVisible);
@@ -722,3 +752,4 @@ function showResult(d){ /* v1.10：不再显示遮挡桌面的结算弹窗 */ }
 }
 @media (prefers-reduced-motion:reduce){.btn-ripple,.seat.current .avatar,.seat.winner,.my-player-info.winner{animation:none!important}}
 </style>
+
