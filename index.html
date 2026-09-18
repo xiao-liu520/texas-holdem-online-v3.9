@@ -448,11 +448,13 @@ $('readyBtn').onclick=()=>{initAudio();socket.emit('toggleReady')};
 $('startBtn').onclick=()=>{initAudio();socket.emit('startGame')};
 $('leaveLobbyBtn').onclick=()=>{clearRoomIdentity();socket.emit('leaveRoom');screen('home')};
 $('leaveGameBtn').onclick=()=>{if(confirm('确定离开房间吗？房主离开会解散房间。')){clearRoomIdentity();socket.emit('leaveRoom');screen('home')}};
-$('foldBtn').onclick=()=>{initAudio();socket.emit('action',{type:'fold'})};
-$('checkBtn').onclick=()=>{initAudio();socket.emit('action',{type:'check'})};
-$('callBtn').onclick=()=>{initAudio();socket.emit('action',{type:'call'})};
-$('raiseBtn').onclick=()=>{initAudio();const amount=Number($('raiseAmount').value);if(!amount)return showToast('请输入加注后的总投入');socket.emit('action',{type:'raise',amount})};
-$('allinBtn').onclick=()=>{initAudio();socket.emit('action',{type:'allin'})};
+let actionSentAt=0;
+function sendAction(type,extra={}){const now=Date.now();if(now-actionSentAt<450)return;actionSentAt=now;initAudio();socket.emit('action',{type,...extra})}
+$('foldBtn').onclick=()=>sendAction('fold');
+$('checkBtn').onclick=()=>sendAction('check');
+$('callBtn').onclick=()=>sendAction('call');
+$('raiseBtn').onclick=()=>{const amount=Number($('raiseAmount').value);if(!amount)return showToast('请输入加注后的总投入');sendAction('raise',{amount})};
+$('allinBtn').onclick=()=>sendAction('allin');
 $('raiseMinus').onclick=()=>adjustRaiseAmount(-1);
 $('raisePlus').onclick=()=>adjustRaiseAmount(1);
 $('revealBtn').onclick=()=>{initAudio();socket.emit('revealCards')};
