@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>好友德州扑克</title>
+<link rel="stylesheet" href="/fx.css">
 <style>
 *{box-sizing:border-box}
 :root{--bg:#0b1110;--panel:#151d1b;--panel2:#1d2724;--felt:#087a45;--felt2:#045b34;--gold:#f2b233;--red:#d94b42;--text:#f4f6f5;--muted:#a9b5b0}
@@ -316,6 +317,7 @@ input:focus{border-color:#63c99a}
 </section>
 
 <section id="game" class="hidden">
+  <div id="fxLayer" aria-hidden="true"></div>
   <button id="soundToggle" class="sound-toggle" title="开启/关闭游戏音效">🔊 音效开</button>
   <div class="game-top">
     <div class="badge">房间 <b id="gameRoom"></b></div>
@@ -359,6 +361,7 @@ input:focus{border-color:#63c99a}
 <div id="result" class="result hidden" aria-hidden="true"></div>
 
 <script src="/socket.io/socket.io.js"></script>
+<script type="module" src="/fx.js"></script>
 <script>
 const socket = io({reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:500,reconnectionDelayMax:5000,randomizationFactor:.25,timeout:20000,transports:['websocket','polling']});
 const $ = id => document.getElementById(id);
@@ -366,6 +369,7 @@ let room = null, me = null, latestState = null, toastTimer = null, countdownTime
 let soundOn = localStorage.getItem('poker_sound') !== 'off';
 let audioCtx = null, previousState = null, lastCountdownBeep = -1, chipAudio = null;
 function initAudio(){
+  if(window.premiumFX){window.premiumFX.unlock();return}
   if(!soundOn)return;
   try{
     audioCtx ||= new (window.AudioContext||window.webkitAudioContext)();
@@ -379,17 +383,18 @@ function tone(freq=440,duration=.08,type='sine',gain=.035,when=0){
   const now=audioCtx.currentTime+(when||0),o=audioCtx.createOscillator(),g=audioCtx.createGain();
   o.type=type;o.frequency.setValueAtTime(freq,now);g.gain.setValueAtTime(0.0001,now);g.gain.exponentialRampToValueAtTime(gain,now+.008);g.gain.exponentialRampToValueAtTime(.0001,now+duration);o.connect(g);g.connect(audioCtx.destination);o.start(now);o.stop(now+duration+.02);
 }
-function soundDeal(){tone(720,.055,'triangle',.025);tone(960,.045,'triangle',.018,.045)}
+function soundDeal(){if(window.premiumFX){window.premiumFX.play('deal');return}tone(720,.055,'triangle',.025);tone(960,.045,'triangle',.018,.045)}
 function soundChip(){
+  if(window.premiumFX){window.premiumFX.play('chip');return}
   if(!soundOn)return; initAudio();
   try{
     const a=chipAudio ? chipAudio.cloneNode(true) : new Audio('/sounds/chip-clack.wav');
     a.volume=.42; a.play().catch(()=>{});
   }catch(e){ tone(180,.06,'square',.018); }
 }
-function soundAction(){tone(420,.06,'sine',.018);tone(620,.045,'triangle',.012,.055)}
-function soundWin(){tone(523,.12,'triangle',.035);tone(659,.12,'triangle',.035,.12);tone(784,.18,'triangle',.04,.24)}
-function soundCountdown(){tone(880,.055,'square',.025)}
+function soundAction(){if(window.premiumFX){window.premiumFX.play('action');return}tone(420,.06,'sine',.018);tone(620,.045,'triangle',.012,.055)}
+function soundWin(){if(window.premiumFX){window.premiumFX.play('win');return}tone(523,.12,'triangle',.035);tone(659,.12,'triangle',.035,.12);tone(784,.18,'triangle',.04,.24)}
+function soundCountdown(){if(window.premiumFX){window.premiumFX.play('countdown');return}tone(880,.055,'square',.025)}
 function setSoundButton(){const b=$('soundToggle');if(!b)return;b.textContent=soundOn?'🔊 音效开':'🔇 音效关';b.title=soundOn?'关闭游戏音效':'开启游戏音效'}
 function playSeatChipAnimation(p,amount,collect=false){
   const seat=playerSeatElement(p);
@@ -408,6 +413,7 @@ function playSeatChipAnimation(p,amount,collect=false){
 function detectVisualEvents(s){
   const old=previousState;
   if(!old){previousState=structuredClone(s);return}
+  if(window.premiumFX){window.premiumFX.ingest(s,old);previousState=structuredClone(s);return}
   const oldCommunity=(old.community||[]).length,newCommunity=(s.community||[]).length;
   if(newCommunity>oldCommunity){
     const n=newCommunity-oldCommunity;for(let i=0;i<n;i++)setTimeout(soundDeal,i*80);
@@ -492,6 +498,7 @@ socket.on('state',s=>renderState(s));
 socket.on('toast',showToast);
 socket.on('chat',m=>{const el=document.createElement('div');el.className='msg';el.innerHTML='<b>'+esc(m.nickname)+'</b>：'+esc(m.text);$('messages').appendChild(el);$('messages').scrollTop=$('messages').scrollHeight});
 socket.on('showdown',d=>{
+  if(window.premiumFX){window.premiumFX.showdown(d);return}
   // 不再弹出遮挡牌面的结算窗口；摊牌结束后才播放底池筹码飞向赢家。
   const winners=d.winners||[];
   winners.forEach((w,i)=>setTimeout(()=>{
