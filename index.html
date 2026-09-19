@@ -450,7 +450,7 @@ $('joinBtn').onclick=()=>{initAudio();const n=$('nickname').value.trim()||'玩�
 $('readyBtn').onclick=()=>{initAudio();socket.emit('toggleReady')};
 $('startBtn').onclick=()=>{initAudio();socket.emit('startGame')};
 $('leaveLobbyBtn').onclick=()=>{clearRoomIdentity();socket.emit('leaveRoom');screen('home')};
-$('leaveGameBtn').onclick=()=>{if(confirm('确定离开房间吗？房主离开会解散房间。')){clearRoomIdentity();socket.emit('leaveRoom');screen('home')}};
+$('leaveGameBtn').onclick=()=>{if(confirm('确定离开房间吗？房主离开后会自动转移给其他玩家。')){clearRoomIdentity();socket.emit('leaveRoom');screen('home')}};
 let actionSentAt=0;
 function sendAction(type,extra={}){const now=Date.now();if(now-actionSentAt<450||actionPending)return;actionSentAt=now;actionPending=true;initAudio();socket.emit('action',{type,...extra},reply=>{if(!reply?.ok){actionPending=false;actionAckVersion=0;showToast(reply?.error||'操作未提交');return}actionAckVersion=Number(reply.stateVersion)||0;if((latestState?.stateVersion||0)>=actionAckVersion)actionPending=false})}
 $('foldBtn').onclick=()=>sendAction('fold');
