@@ -72,7 +72,7 @@ function scheduleDeleteRoom(code){
 }
 function restoreRoom(raw){
   if(!raw||!raw.code||!Array.isArray(raw.players))return null;
-  const r={...raw,blindTimer:null,showdownTimer:null,resultTimer:null,actionTimer:null,acted:new Set(),pending:new Set(),pendingWinnings:raw.pendingWinnings?new Map(raw.pendingWinnings):null};
+  const r={...raw,stateVersion:Number(raw.stateVersion)||0,blindTimer:null,showdownTimer:null,resultTimer:null,actionTimer:null,acted:new Set(),pending:new Set(),pendingWinnings:raw.pendingWinnings?new Map(raw.pendingWinnings):null};
   r.players=r.players.map(p=>({...p,id:null,socket:null,offline:true,status:'离线',reconnectUntil:Date.now()+RECONNECT_GRACE,_showdownVisible:!!p.showdownVisible}));
   r._actedTokens=new Set(raw.actedTokens||[]);
   r._pendingTokens=new Set(raw.pendingTokens||[]);
@@ -234,11 +234,11 @@ function toPublicState(r,socketId){
     meId:socketId,me:me?{id:me.id,ready:me.ready,isHost:me.isHost,chips:me.chips,status:me.status,blind:me.seat===r.sbSeat?'SB':(me.seat===r.bbSeat?'BB':''),showdownVisible:!!me._showdownVisible,handName:currentHand([...me.holeCards,...r.community])?.name||''}:null,hostId:r.hostId,canStart:!!me && me.id===r.hostId && r.phase==='lobby' && r.players.filter(p=>p.ready&&p.chips>0).length>=2,readyCount:r.players.filter(p=>p.ready&&p.chips>0).length,meFolded:!!me?.folded,myCards,
     toCall:me?Math.max(0,currentHighest(r)-me.roundBet):0,
     highestBet:currentHighest(r),minRaiseTo:r.minRaiseTo,canCheck:me?currentHighest(r)===me.roundBet:false,
-    actionDeadline:r.actionDeadline||null,
+    actionDeadline:r.actionDeadline||null,stateVersion:r.stateVersion||0,
     winnerIds:r.winnerIds||[],potBreakdown:publicPotBreakdown(r),
   };
 }
-function broadcastState(r){setPot(r);for(const p of r.players)if(p.socket)io.to(p.socket).emit('state',toPublicState(r,p.socket));schedulePersist()}
+function broadcastState(r){setPot(r);r.stateVersion=(r.stateVersion||0)+1;for(const p of r.players)if(p.socket)io.to(p.socket).emit('state',toPublicState(r,p.socket));schedulePersist()}
 function notice(r,msg){io.to(r.code).emit('toast',msg)}
 function clearActionTimer(r){
   clearTimeout(r.actionTimer);
@@ -757,10 +757,38 @@ function joinCommon(socket,nickname,code,isCreate=false){
   if(isCreate)startBlindTimer(r);
   return r;
 }
+function chooseNextHost(r,leaving){
+  const online=r.players.filter(p=>p!==leaving&&!p.offline&&p.socket);
+  return online.find(p=>p.inHand)||online.find(p=>p.ready)||online[0]||null;
+}
+function transferHost(r,leaving){
+  if(!leaving?.isHost)return null;
+  leaving.isHost=false;
+  const next=chooseNextHost(r,leaving);
+  r.hostId=next?.id||null;
+  if(next){next.isHost=true;notice(r,`${next.nickname} 已接任房主，房间继续保留`)}
+  else notice(r,'房主暂时离线，房间会保留并等待玩家重连');
+  return next;
+}
+function forfeitLeavingPlayer(r,p){
+  if(r.phase!=='playing'||!p.inHand||p.folded)return;
+  if(r.currentPlayerId===p.id)clearActionTimer(r);
+  p.folded=true;p.status='离桌弃牌';r.pending.delete(p.id);r.acted.add(p.id);
+  advanceAfterAction(r,p);
+}
+function scheduleOfflineCleanup(r,p){
+  setTimeout(()=>{
+    const rr=rooms.get(r.code);if(!rr||!rr.players.includes(p)||!p.offline||p.reconnectUntil>Date.now())return;
+    if(p.isHost)transferHost(rr,p);
+    if(p.inHand){scheduleOfflineCleanup(rr,p);return}
+    rr.players=rr.players.filter(x=>x!==p);
+    broadcastState(rr);
+  },RECONNECT_GRACE+150);
+}
 io.on('connection',socket=>{
   socket.on('createRoom',({nickname})=>{
     try{
-      const code=roomCode();const r={code,hostId:null,players:[],phase:'lobby',smallBlind:START_SB,bigBlind:START_BB,nextBlindAt:Date.now()+BLIND_INTERVAL,blindTimer:null,showdownTimer:null,showdownStarted:false,revealAllShowdown:false,resultTimer:null,actionTimer:null,actionDeadline:null,revealShowdown:false,winnerIds:[],deck:[],community:[],dealerSeat:null,hasStartedHand:false,sbSeat:null,bbSeat:null,currentPlayerId:null,street:'',pot:0,minRaiseTo:START_BB,acted:new Set(),pending:new Set()};
+      const code=roomCode();const r={code,stateVersion:0,hostId:null,players:[],phase:'lobby',smallBlind:START_SB,bigBlind:START_BB,nextBlindAt:Date.now()+BLIND_INTERVAL,blindTimer:null,showdownTimer:null,showdownStarted:false,revealAllShowdown:false,resultTimer:null,actionTimer:null,actionDeadline:null,revealShowdown:false,winnerIds:[],deck:[],community:[],dealerSeat:null,hasStartedHand:false,sbSeat:null,bbSeat:null,currentPlayerId:null,street:'',pot:0,minRaiseTo:START_BB,acted:new Set(),pending:new Set()};
       rooms.set(code,r);const joined=joinCommon(socket,nickname,code,true);const p=joined.players.find(x=>x.id===socket.id);schedulePersist();socket.emit('roomCreated',{roomCode:code,token:p.token,state:toPublicState(joined,socket.id)});
     }catch(e){socket.emit('errorMsg',e.message)}
   });
@@ -782,6 +810,7 @@ io.on('connection',socket=>{
       socket.data.roomCode=r.code;socket.data.playerId=p.id;socket.data.playerToken=p.token;
       if(r.currentPlayerId===oldId || r._currentPlayerToken===p.token)r.currentPlayerId=p.id;
       if(r.hostId===oldId || p.isHost)r.hostId=p.id;
+      if(!r.hostId){p.isHost=true;r.hostId=p.id;notice(r,`${p.nickname} 已接任房主，房间继续保留`)}
       p.isHost=!!p.isHost;
       if(r.acted.has(oldId)){r.acted.delete(oldId);r.acted.add(p.id)}
       if(r.pending.has(oldId)){r.pending.delete(oldId);r.pending.add(p.id)}
@@ -803,8 +832,8 @@ io.on('connection',socket=>{
   socket.on('revealCards',()=>{
     try{const r=rooms.get(socket.data.roomCode),p=r?.players.find(x=>x.id===socket.id);if(!r||!p)throw new Error('房间不存在');revealOwnCards(r,p)}catch(e){socket.emit('errorMsg',e.message)}
   });
-  socket.on('action',a=>{
-    try{const r=rooms.get(socket.data.roomCode),p=r?.players.find(x=>x.id===socket.id);if(!r||!p)throw new Error('房间不存在');doAction(r,p,a)}catch(e){socket.emit('errorMsg',e.message)}
+  socket.on('action',(a,ack)=>{
+    try{const r=rooms.get(socket.data.roomCode),p=r?.players.find(x=>x.id===socket.id);if(!r||!p)throw new Error('房间不存在');doAction(r,p,a);if(typeof ack==='function')ack({ok:true,stateVersion:r.stateVersion||0})}catch(e){if(typeof ack==='function')ack({ok:false,error:e.message});socket.emit('errorMsg',e.message)}
   });
   socket.on('chat',text=>{
     const r=rooms.get(socket.data.roomCode),p=r?.players.find(x=>x.id===socket.id);if(!r||!p)return;
@@ -814,8 +843,10 @@ io.on('connection',socket=>{
   socket.on('leaveRoom',()=>{
     const r=rooms.get(socket.data.roomCode);if(!r)return;
     const p=r.players.find(x=>x.id===socket.id);if(!p)return;
-    if(p.isHost){clearTimeout(r.blindTimer);clearActionTimer(r);clearTimeout(r.resultTimer);clearTimeout(r.showdownTimer);rooms.delete(r.code);scheduleDeleteRoom(r.code);io.to(r.code).emit('roomClosed','房主离开，房间已解散');return}
-    r.players=r.players.filter(x=>x.id!==socket.id);broadcastState(r);
+    if(p.isHost)transferHost(r,p);
+    if(r.phase==='lobby'){r.players=r.players.filter(x=>x!==p)}
+    else {p.socket=null;p.offline=true;p.status='已离开';p.reconnectUntil=Date.now()+RECONNECT_GRACE;forfeitLeavingPlayer(r,p);scheduleOfflineCleanup(r,p)}
+    socket.leave(r.code);if(!r.players.length){rooms.delete(r.code);scheduleDeleteRoom(r.code);return}broadcastState(r);
   });
   socket.on('disconnect',()=>{
     const code=socket.data.roomCode,r=rooms.get(code);if(!r)return;
@@ -824,13 +855,7 @@ io.on('connection',socket=>{
     if(!p)return;
     p.socket=null;p.offline=true;p.status='离线';
     p.reconnectUntil=Date.now()+RECONNECT_GRACE;
-    if(p.isHost){
-      setTimeout(()=>{const rr=rooms.get(code);if(rr&&rr.players.includes(p)&&p.offline&&p.reconnectUntil<=Date.now()){
-        clearTimeout(rr.blindTimer);clearActionTimer(rr);clearTimeout(rr.resultTimer);clearTimeout(rr.showdownTimer);rooms.delete(code);scheduleDeleteRoom(code);io.to(code).emit('roomClosed','房主长时间断线，房间已解散');
-      }},RECONNECT_GRACE+100);
-    } else {
-      setTimeout(()=>{const rr=rooms.get(code);if(rr&&rr.players.includes(p)&&p.offline&&p.reconnectUntil<=Date.now()){rr.players=rr.players.filter(x=>x!==p);broadcastState(rr)}},RECONNECT_GRACE+100);
-    }
+    scheduleOfflineCleanup(r,p);
     broadcastState(r);
   });
 });
