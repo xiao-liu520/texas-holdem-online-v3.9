@@ -367,7 +367,7 @@ input:focus{border-color:#63c99a}
 <script>
 const socket = io({reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:500,reconnectionDelayMax:5000,randomizationFactor:.25,timeout:20000,transports:['websocket','polling']});
 const $ = id => document.getElementById(id);
-let room = null, me = null, latestState = null, toastTimer = null, countdownTimer = null, actionCountdownTimer = null;
+let room = null, me = null, latestState = null, toastTimer = null, countdownTimer = null, actionCountdownTimer = null, actionPending = false, actionAckVersion = 0;
 let soundOn = localStorage.getItem('poker_sound') !== 'off';
 let audioCtx = null, previousState = null, lastCountdownBeep = -1, chipAudio = null;
 function initAudio(){
@@ -452,7 +452,7 @@ $('startBtn').onclick=()=>{initAudio();socket.emit('startGame')};
 $('leaveLobbyBtn').onclick=()=>{clearRoomIdentity();socket.emit('leaveRoom');screen('home')};
 $('leaveGameBtn').onclick=()=>{if(confirm('确定离开房间吗？房主离开会解散房间。')){clearRoomIdentity();socket.emit('leaveRoom');screen('home')}};
 let actionSentAt=0;
-function sendAction(type,extra={}){const now=Date.now();if(now-actionSentAt<450)return;actionSentAt=now;initAudio();socket.emit('action',{type,...extra})}
+function sendAction(type,extra={}){const now=Date.now();if(now-actionSentAt<450||actionPending)return;actionSentAt=now;actionPending=true;initAudio();socket.emit('action',{type,...extra},reply=>{if(!reply?.ok){actionPending=false;actionAckVersion=0;showToast(reply?.error||'操作未提交');return}actionAckVersion=Number(reply.stateVersion)||0;if((latestState?.stateVersion||0)>=actionAckVersion)actionPending=false})}
 $('foldBtn').onclick=()=>sendAction('fold');
 $('checkBtn').onclick=()=>sendAction('check');
 $('callBtn').onclick=()=>sendAction('call');
@@ -481,9 +481,9 @@ function tryResume(){
   resumeInFlight=true;
   socket.emit('resumeRoom',{roomCode:code,token});
 }
-socket.on('connect',()=>{ setConnectionState('online');resumeInFlight=false; tryResume(); showToast('网络已连接，正在恢复座位…'); });
+socket.on('connect',()=>{ setConnectionState('online');actionPending=false;actionAckVersion=0;resumeInFlight=false; tryResume(); showToast('网络已连接，正在恢复座位…'); });
 socket.on('reconnect',()=>{ setConnectionState('online');resumeInFlight=false; tryResume(); });
-socket.on('disconnect',()=>{ setConnectionState('offline');resumeInFlight=false; if(localStorage.getItem('poker_room_token')) showToast('网络暂时中断，正在自动重连…'); });
+socket.on('disconnect',()=>{ setConnectionState('offline');actionPending=false;actionAckVersion=0;resumeInFlight=false; if(localStorage.getItem('poker_room_token')) showToast('网络暂时中断，正在自动重连…'); });
 socket.on('connect_error',()=>{ setConnectionState('connecting'); /* Socket.IO 会持续自动重连，不清除本地身份 */ });
 // 手机切换 Wi-Fi/流量、进电梯、切后台或横竖屏时，不主动离开房间；恢复网络后自动接管原座位。
 document.addEventListener('visibilitychange',()=>{
@@ -515,6 +515,8 @@ socket.on('showdown',d=>{
 socket.on('roomClosed',m=>{clearRoomIdentity();alert(m||'房间已关闭');location.reload()});
 
 function renderState(s){
+  if(Number.isFinite(s.stateVersion)&&Number.isFinite(latestState?.stateVersion)&&s.stateVersion<latestState.stateVersion)return;
+  if(actionPending&&actionAckVersion&&Number(s.stateVersion||0)>=actionAckVersion){actionPending=false;actionAckVersion=0}
   const oldCommunityCount=previousState?.community?.length||0;
   const oldMyCardCount=previousState?.myCards?.length||0;
   detectVisualEvents(s);
@@ -633,8 +635,9 @@ function renderGame(s){
     mineInfo.innerHTML=(myAction?'<div class="action-pop">'+myAction+'</div>':'')+'<div class="avatar">'+esc(s.me.avatar||'🙂')+'</div><div class="my-player-text"><div class="name">'+esc(s.me.nickname)+(s.me.blind?'<span class="blind-tag">'+s.me.blind+'</span>':'')+(s.dealerSeat===s.me.seat?'<span class="dealer-tag">D</span>':'')+'</div><div class="chips">筹码 '+fmt(s.me.chips)+'</div><div class="state">'+esc(s.me.status||'等待')+'</div></div>';
   }
   $('myCards').innerHTML=s.myCards?.length?s.myCards.map(c=>cardHtml(c)).join(''):''; if((s.myCards?.length||0)>s.__oldMyCardCount) [...$('myCards').children].forEach(el=>el.classList.add('deal-anim'));$('myHandName').textContent=s.me?.handName?'牌型：'+s.me.handName:'';
-  const mine=s.currentPlayerId===s.meId && s.phase==='playing' && !s.meFolded;
-  $('turnText').textContent=mine?(s.toCall>0?'轮到你操作 · 需跟注 '+fmt(s.toCall):'轮到你操作 · 可以过牌或下注'):s.phase==='showdown'?'摊牌展示中 · 请查看完整牌面，结果即将结算…':s.currentPlayerId?('等待 '+esc(s.players.find(p=>p.id===s.currentPlayerId)?.nickname||'玩家')+' 操作'):'等待…';
+  const mineTurn=s.currentPlayerId===s.meId && s.phase==='playing' && !s.meFolded;
+  const mine=mineTurn&&!actionPending;
+  $('turnText').textContent=actionPending?'操作提交中…':mineTurn?(s.toCall>0?'轮到你操作 · 需跟注 '+fmt(s.toCall):'轮到你操作 · 可以过牌或下注'):s.phase==='showdown'?'摊牌展示中 · 请查看完整牌面，结果即将结算…':s.currentPlayerId?('等待 '+esc(s.players.find(p=>p.id===s.currentPlayerId)?.nickname||'玩家')+' 操作'):'等待…';
   $('foldBtn').disabled=!mine;
   $('checkBtn').disabled=!mine || s.toCall!==0;
   $('checkBtn').textContent=s.toCall>0?'过牌不可用':'过牌';
